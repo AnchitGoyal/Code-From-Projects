@@ -1,0 +1,153 @@
+---
+title: "ML Final Project | R Code"
+output: rmd
+---
+
+#Libraries
+```{r}
+#Setting up all the possible libraries
+library(tidyverse)
+library(haven)
+library(Matrix)
+library(lmtest)
+library(sandwich)
+library(matrixcalc)
+library(estimatr)
+library(tseries)
+library(urca)
+library(caret)
+library(leaps)
+library(glmnet)
+library(ggthemes)
+library(doParallel)
+library(MLeval)
+library(VGAM)
+library(caTools)
+library(ISLR)
+library(pROC)
+library(klaR) 
+library(e1071)
+library(ROCR)
+library(boot)
+library(MASS)
+library(naivebayes)
+library(dplyr)
+library(ggplot2)
+library(psych)
+library(stargazer)
+library(plm)
+library(data.table)
+library(tidyr)
+library(systemfit)
+library(skedastic)
+library(car)
+library(GGally)
+library(panelvar)
+library(quantmod)
+library(xts)
+library(MTS)
+library(fUnitRoots) 
+library(timeSeries)
+library(fGarch)
+library(dynlm)
+library(fUnitRoots)
+library(tseries)
+library(urca)
+library(quantmod)
+library(timeSeries)
+library(pglm)
+library(bife)
+library(REEMtree)
+library(tree)
+library(randomForest)
+library(splines)
+library(stargazer)
+library(gbm)
+library(BART)
+library(REEMtree)
+library(rpart)
+library(rpart.plot)
+```
+
+#Data
+```{r}
+#using the newly created panel data
+
+df <- read.csv("/Users/anchitgoyal/Desktop/NYU/Sem_2/ML_in_Econ/Final Paper/Data for ML Final Paper/Final Data_v1.csv")
+
+pdf <- pdata.frame(df, c("State", "Year"))
+
+pdf$GOS <- as.factor(pdf$GOS)
+
+train_df <- read.csv("/Users/anchitgoyal/Desktop/NYU/Sem_2/ML_in_Econ/Final Paper/Data for ML Final Paper/ML_FinalData_Train.csv")
+
+train_pdf <- pdata.frame(train_df, c("State", "Year"))
+
+test_df <- read.csv("/Users/anchitgoyal/Desktop/NYU/Sem_2/ML_in_Econ/Final Paper/Data for ML Final Paper/ML_Final Data_Test.csv")
+
+test_pdf <- pdata.frame(test_df, c("State", "Year"))
+
+```
+
+#Visial Manipulation
+```{r}
+train_pdf$GOS[train_pdf$GOS == 1] <- "Democratic"
+train_pdf$GOS[train_pdf$GOS == 0] <- "Republican"
+
+pdf$GOS[pdf$GOS == 0] <- "Republican"
+pdf$GOS[pdf$GOS == 1] <- "Democratic"
+
+pdf <- pdata.frame(df, c("State", "Year"))
+```
+
+#5.2.1 Tree - Full
+```{r}
+tree_OG <- rpart(GOS ~ GDP_Growth_Rate + Ugrowth + Inequality_Growth + l_rgdp_diff + l_ur_diff + l_ineq_diff, data = pdf, method="class",control =rpart.control(minsplit =1,minbucket=1, cp=0.025, cv=TRUE))
+
+rpart.plot(tree_OG, type =1, box.palette = list("Blues","Reds"), fallen.leaves = TRUE, shadow.col = "darkgray")
+```
+
+#5.2.2 Tree- Training
+```{r}
+##Using the main tree on Training 
+tree_train <- rpart(GOS ~ GDP.Growth.Rate + Ugrowth + Inequality.Growth.Rate + l_rgdp_diff + l_ur_diff + l_ineq_diff, data = train_pdf, method="class",control =rpart.control(minsplit =1,minbucket=1, cv=TRUE, cp = 0.025, type = 1))
+
+rpart.plot(tree_train, type =1, box.palette = list("Blues","Reds"), fallen.leaves = TRUE, shadow.col = "darkgray")
+```
+
+#5.2.2 Test Error Rate
+```{r}
+##Changing the data back to numeric factors
+train_pdf$GOS[train_pdf$GOS == "Democratic"] <- 1
+train_pdf$GOS[train_pdf$GOS == "Republican"] <- 0
+
+#Predicting the tree
+predict_tree1 <- predict(tree_train , test_pdf)
+
+predict_tree1 <- as.data.frame(predict_tree1)
+
+
+#Changing the column names
+colnames(predict_tree1) <- c("R","D")
+
+predict_tree1$GOS <- ifelse(predict_tree1$R > predict_tree1$D, 0, 1)
+
+tree_testing <- as.vector(test_pdf$GOS)
+
+#Stats for the two data sets
+dim(predict_tree1)
+glimpse(predict_tree1)
+
+#Setting as a vector
+predict_tree1$GOS <- as.vector(predict_tree1$GOS)
+
+summary(predict_tree1)
+
+#Confusion Matrix resulting in test error and accuracy
+confusionMatrix(as.factor(predict_tree1$GOS), as.factor(tree_testing))
+
+#Test Error Rate = 1 - accuracy
+t_error_rate <- 1 - 0.5667
+t_error_rate
+```
+
