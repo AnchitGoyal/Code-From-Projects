@@ -1,0 +1,197 @@
+---
+title: "BRICS"
+author: "Rhea Dhar"
+date: "2023-05-08"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+nd1 <- read_excel("NDs.xlsx")
+GDP <- read_excel("GDP.xlsx")
+nd <- select(nd1, Country, `End Year`,`Total Damages ('000 US$)`)
+
+merged_ND = merge(GDP,nd, by.y=c('Country', 'End Year'), by.x=c('Country', 'Year'), all.x = TRUE)
+merged_ND$`nominal GDP_USD` <- as.numeric(as.character(merged_ND$`nominal GDP_USD`)) 
+
+lapply(merged_ND,class)
+merged_ND$Damages_GDP = (merged_ND$`Total Damages ('000 US$)`/merged_ND$`nominal GDP_USD`)/10000
+merged_ND["Damages_GDP"][is.na(merged_ND["Damages_GDP"])] <- 0
+merged_ND1<-merged_ND%>%group_by(Country, `Year`) %>% summarise(num = n(), total = sum(Damages_GDP))
+
+merged_ND1 <- merged_ND1 %>% rename ("Damages_GDP" = "total")
+```
+
+
+```{r}
+library(readr)
+
+BRICS_pdf <- read_csv("~/BRICS_pdf.csv")
+BRICS = merge(BRICS_pdf,merged_ND1, by.y=c('Country', 'Year'), by.x=c('Country', 'Year'), all.x = TRUE)
+
+```
+
+
+```{r pressure, echo=FALSE}
+#Output gap
+library(readxl)
+output_gap <- read_excel("C:/Users/rhead/Downloads/output_gap.xlsx")
+BRICS1 = merge(BRICS,output_gap, by.y=c('Country', 'Year'), by.x=c('Country', 'Year'), all.x = TRUE)
+#Election Year
+BRICS_Election_Year_Dummy_v2 <- read_excel("C:/Users/rhead/Downloads/BRICS_Election Year Dummy_v2.xlsx")
+BRICS2 = merge(BRICS1,BRICS_Election_Year_Dummy_v2, by.y=c('Country Name', 'Year'), by.x=c('Country', 'Year'), all.x = TRUE)
+
+write.csv(BRICS2,"Final_BRICS_V2.csv")
+```
+
+
+```{r}
+library(pglm)
+library(plm)
+library(lmtest)
+BRICS_pdf<-pdata.frame(BRICS2,index=c("Country","Year"))  
+
+fe_brics<- plm(Primary.balance_GDP ~ l_Public.Debt_GDP, data = BRICS_pdf, model ="within")
+summary(fe_brics)
+
+fe_brics1<- plm(Primary.balance_GDP ~ l_Public.Debt_GDP + CAB_GDP + Interest_GDP + Output_Gap + Election.Year.Dummy + l_Primary.balance_GDP, data = BRICS_pdf, model ="within")
+summary(fe_brics1)
+
+fe_brics2<- plm(Primary.balance_GDP ~ l_Public.Debt_GDP + CAB_GDP + Interest_GDP + Output_Gap + Election.Year.Dummy + l_Primary.balance_GDP + Damages_GDP, data = BRICS_pdf, model ="within")
+summary(fe_brics2)
+
+fe_brics3<- plm(Primary.balance_GDP ~ l_Public.Debt_GDP + CAB_GDP + Interest_GDP + Output_Gap + Election.Year.Dummy + l_Primary.balance_GDP + Damages_GDP + Control.of.Corruption.y + Government.Effectiveness.y + Political.Stability.y + Regulatory.Quality.y , data = BRICS_pdf, model ="within")
+summary(fe_brics3)
+```
+
+
+```{r}
+library(lmtest)
+#library(pcdtest)
+##Cross sectional dependence test
+bptest(fe_brics3) #Heteroskedasticity exists
+
+
+```
+```{r}
+library(plm)
+
+fgls_brics<- pggls(Primary.balance_GDP ~ l_Public.Debt_GDP, data = BRICS_pdf, model ="within")
+summary(fgls_brics)
+
+fgls_brics1<- pggls(Primary.balance_GDP ~ l_Public.Debt_GDP + CAB_GDP + Interest_GDP + Output_Gap + Election.Year.Dummy + l_Primary.balance_GDP, data = BRICS_pdf, model ="within")
+summary(fgls_brics1)
+
+fgls_brics2<- pggls(Primary.balance_GDP ~ l_Public.Debt_GDP + CAB_GDP + Interest_GDP + Output_Gap + Election.Year.Dummy + l_Primary.balance_GDP + Damages_GDP, data = BRICS_pdf, model ="within")
+summary(fgls_brics2)
+
+fgls_brics3<- pggls(Primary.balance_GDP ~ l_Public.Debt_GDP + CAB_GDP + Interest_GDP + Output_Gap + Election.Year.Dummy + l_Primary.balance_GDP +Inflation + Damages_GDP + Control.of.Corruption.y + Government.Effectiveness.y + Regulatory.Quality.y + Political.Stability.y, data = BRICS_pdf, model ="within")
+
+summary(fgls_brics3)
+
+```
+
+```{r mylatextable, results = "asis"}
+library(stargazer)
+
+stargazer(fgls_brics,fgls_brics1,fgls_brics2,fgls_brics3, type = "latex")
+```
+```{r}
+#create subset of regressors
+library(plm)
+library(tidyr)
+regs = subset(BRICS_pdf, select=c('Primary.balance_GDP','l_Public.Debt_GDP','CAB_GDP','Interest_GDP','Output_Gap','Election.Year.Dummy','l_Primary.balance_GDP','Inflation','Damages_GDP','Control.of.Corruption.y','Government.Effectiveness.y','Regulatory.Quality.y','Political.Stability.y'))
+
+#for PRIMARY BALANCE
+regs2 = subset(BRICS_pdf, select=c('Primary.balance_GDP'))
+purtest(regs2, test = "ips", exo = "intercept")
+
+#for regressors
+regs3 = subset(BRICS_pdf, select=c('Public.Debt_GDP'))
+purtest(regs3, test = "ips", exo = "trend") #not stationary so create first difference
+#creating first difference
+regs4 = regs3 %>% mutate("pd_firstdiff" = BRICS_pdf$Public.Debt_GDP - BRICS_pdf$l_Public.Debt_GDP)
+regs5 = subset(regs4, select=c('pd_firstdiff'))
+purtest(regs5, test = "ips", exo = "trend") #stationary
+
+regs4 = subset(BRICS_pdf, select=c('CAB_GDP'))
+purtest(regs4, test = "ips", exo = "trend") #stationary
+
+regs5 = subset(BRICS_pdf, select=c('Interest_GDP'))
+purtest(regs5, test = "ips", exo = "intercept") #stationary
+
+regs6 = subset(BRICS_pdf, select=c('Output_Gap'))
+purtest(regs6, test = "ips", exo = "intercept") #stationary
+
+regs7 = subset(BRICS_pdf, select=c('Election.Year.Dummy'))
+purtest(regs7, test = "ips", exo = "trend")
+
+regs8 = subset(BRICS_pdf, select=c('Inflation'))
+purtest(regs8, test = "ips", exo = "trend")
+
+regs9 = subset(BRICS_pdf, select=c('Damages_GDP'))
+purtest(regs9, test = "ips", exo = "intercept") 
+
+BRICS_pdf = BRICS_pdf >%>% mutate("lag ")
+regs9a = regs9 %>% mutate("pd_firstdiff" = BRICS_pdf$Damages_GDP - BRICS_pdf$l_Public.Debt_GDP)
+regs9a = subset(regs4, select=c('pd_firstdiff'))
+purtest(regs5, test = "ips", exo = "trend")
+
+regs10 = subset(BRICS_pdf, select=c('Control.of.Corruption.y'))
+purtest(regs10, test = "ips", exo = "trend")
+
+regs11 = subset(BRICS_pdf, select=c('Government.Effectiveness.y'))
+purtest(regs11, test = "ips", exo = "trend")
+
+regs12 = subset(BRICS_pdf, select=c('Regulatory.Quality.y'))
+purtest(regs12, test = "ips", exo = "trend")
+
+regs13 = subset(BRICS_pdf, select=c('Political.Stability.y'))
+purtest(regs13, test = "ips", exo = "trend")
+
+```
+
+
+```{r}
+#find fitted values
+Fgls.model.fitted <- fgls_brics3$model[[1]] - fgls_brics3$residuals
+cor(Fgls.model.fitted,fgls_brics3$model[[1]])
+pcdtest(fgls_brics3) #there is cross sectional dependence 
+
+
+#AIC(fgls_brics3)
+
+```
+
+
+
+
+```{r}
+library(stargazer)
+
+stargazer(fe_brics,fe_brics1,fe_brics2,fe_brics3, type = "latex")
+```
+
+```{r}
+#install.packages("corrplot")
+#library("corrplot")
+BRICS_2002 <- BRICS2 %>% filter(Year >= "2002")
+BRICS_2002 <- BRICS_2002 %>% filter(Year < "2022")
+BRICS_2002 ["Damages_GDP"][is.na(BRICS_2002["Damages_GDP"])] <- 0
+BRICS_2002 ["total_Natural_Distaster"][is.na(BRICS_2002["total_Natural_Distaster"])] <- 0
+BRICS_2002 ["Binary_ND"][is.na(BRICS_2002["Binary_ND"])] <- 0
+                  
+
+Multicoll <- BRICS_2002 %>% select(!c(Country,Year))
+
+
+cor(Multicoll)
+```
+
